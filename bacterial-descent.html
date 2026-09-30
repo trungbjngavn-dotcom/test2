@@ -1,0 +1,600 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Descent: Cell to Quantum Field</title>
+<style>
+:root{--fg:#e8f1ff;--dim:rgba(215,232,255,.66);--accent:#8fd8ff}
+html,body{margin:0;height:100%;background:#010207;overflow:hidden;color:var(--fg);font-family:"Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",Arial,sans-serif}
+canvas{display:block;position:fixed;inset:0;width:100%;height:100%;cursor:default}
+#intro{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity 2s ease;text-align:center;padding:0 16px}
+#intro.show{opacity:1}
+#intro h1{font-weight:200;letter-spacing:.55em;font-size:clamp(30px,6.5vw,78px);margin:0 0 .35em;padding-left:.55em;text-shadow:0 0 34px rgba(120,200,255,.5),0 0 12px rgba(0,0,0,.9)}
+#intro p{font-weight:300;letter-spacing:.2em;font-size:clamp(10px,1.3vw,14px);color:var(--dim);margin:0;text-transform:uppercase}
+#cap{position:fixed;left:clamp(16px,4vw,56px);top:clamp(16px,6vh,64px);max-width:min(430px,calc(100vw - 32px));opacity:0;transform:translateY(10px);transition:opacity 1s ease,transform 1s ease;pointer-events:none;text-shadow:0 1px 12px rgba(0,0,0,.9)}
+#cap.show{opacity:1;transform:none}
+#cap .k{font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+#cap h2{font-weight:300;font-size:clamp(22px,2.8vw,34px);margin:0 0 12px;letter-spacing:.02em}
+#cap p{font-weight:300;font-size:clamp(13px,1.2vw,15px);line-height:1.62;color:var(--dim);margin:0}
+#cap .lg{margin-top:12px;display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--dim)}
+#cap .lg span{display:inline-flex;align-items:center;gap:6px}
+#cap .lg i{width:10px;height:10px;border-radius:50%;display:inline-block}
+#finale{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding:0 16px 13vh;pointer-events:none;text-align:center}
+#finale .big{font-weight:200;font-size:clamp(18px,2.6vw,32px);letter-spacing:.03em;max-width:900px;line-height:1.45;margin:0 0 14px;opacity:0;transition:opacity 2.5s ease;text-shadow:0 0 24px rgba(0,0,0,.9)}
+#finale .small{font-size:12px;color:rgba(200,220,255,.45);letter-spacing:.06em;margin:0 0 22px;opacity:0;transition:opacity 2s ease}
+#finale button{pointer-events:auto;background:rgba(140,200,255,.08);color:var(--fg);border:1px solid rgba(160,210,255,.35);border-radius:999px;padding:10px 26px;font:300 14px inherit;letter-spacing:.2em;cursor:pointer;opacity:0;transition:opacity 1.5s ease,background .3s}
+#finale button:hover{background:rgba(140,200,255,.2)}
+#finale.s1 .big,#finale.s2 .small,#finale.s2 button{opacity:1}
+#help{position:fixed;right:16px;bottom:12px;font-size:11px;color:rgba(200,220,255,.34);letter-spacing:.08em;pointer-events:none}
+@media (max-width:700px){#help{display:none}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="intro"><h1>DESCENT</h1><p>From a living cell to the quantum vacuum &nbsp;·&nbsp; eleven orders of magnitude</p></div>
+<div id="cap"><div class="k"></div><h2></h2><p></p><div class="lg"></div></div>
+<div id="finale"><p class="big">Every cell, every strand of DNA, every atom of you — the same few fields, ringing.</p><p class="small">Distances are to scale. Motion is slowed and structures simplified for clarity.</p><button id="replay">↻ &nbsp;REPLAY</button></div>
+<div id="help">space pause · ← → chapters · R restart</div>
+<script>
+(()=>{
+'use strict';
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+let W=1,H=1,DPR=1,D=1;
+function resize(){DPR=Math.min(window.devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=Math.round(W*DPR);cv.height=Math.round(H*DPR);D=Math.max(W,H*1.45);}
+addEventListener('resize',resize);resize();
+
+/* ---------------- utilities ---------------- */
+const TAU=Math.PI*2,DEG=Math.PI/180;
+const clamp=(x,a,b)=>x<a?a:x>b?b:x,lerp=(a,b,t)=>a+(b-a)*t;
+const sstep=(a,b,x)=>{const t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t)};
+const easeIO=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+function mulberry32(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const P8=new Uint8Array(512);{const r=mulberry32(2024),p=[];for(let i=0;i<256;i++)p[i]=i;for(let i=255;i>0;i--){const j=(r()*(i+1))|0,q=p[i];p[i]=p[j];p[j]=q}for(let i=0;i<512;i++)P8[i]=p[i&255]}
+function g3(h,x,y,z){h&=15;const u=h<8?x:y,v=h<4?y:(h===12||h===14?x:z);return((h&1)?-u:u)+((h&2)?-v:v)}
+function fd(t){return t*t*t*(t*(t*6-15)+10)}
+function noise3(x,y,z){let X=Math.floor(x),Y=Math.floor(y),Z=Math.floor(z);x-=X;y-=Y;z-=Z;X&=255;Y&=255;Z&=255;const u=fd(x),v=fd(y),w=fd(z);const A=P8[X]+Y,AA=P8[A]+Z,AB=P8[A+1]+Z,B=P8[X+1]+Y,BA=P8[B]+Z,BB=P8[B+1]+Z;
+return lerp(lerp(lerp(g3(P8[AA],x,y,z),g3(P8[BA],x-1,y,z),u),lerp(g3(P8[AB],x,y-1,z),g3(P8[BB],x-1,y-1,z),u),v),lerp(lerp(g3(P8[AA+1],x,y,z-1),g3(P8[BA+1],x-1,y,z-1),u),lerp(g3(P8[AB+1],x,y-1,z-1),g3(P8[BB+1],x-1,y-1,z-1),u),v),w)}
+function mk(w,h){const c=document.createElement('canvas');c.width=w;c.height=h;return c}
+function rgba(c,a){return 'rgba('+(c[0]|0)+','+(c[1]|0)+','+(c[2]|0)+','+a+')'}
+function mixc(a,b,t){return[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t]}
+function scl(c,k){return[Math.min(255,c[0]*k),Math.min(255,c[1]*k),Math.min(255,c[2]*k)]}
+const WHITE=[255,255,255];
+function glowSpr(col,size,core){size=size||64;core=core||.2;const c=mk(size,size),x=c.getContext('2d'),r=size/2,g=x.createRadialGradient(r,r,0,r,r,r);g.addColorStop(0,rgba(mixc(col,WHITE,.6),1));g.addColorStop(core,rgba(col,.6));g.addColorStop(.5,rgba(col,.14));g.addColorStop(1,rgba(col,0));x.fillStyle=g;x.fillRect(0,0,size,size);return c}
+function ballSpr(col,b,size){size=size||128;const c=mk(size,size),x=c.getContext('2d'),r=size/2;const g=x.createRadialGradient(r*.66,r*.6,r*.03,r*.9,r*.9,r*1.05);
+ g.addColorStop(0,rgba(scl(mixc(col,WHITE,.7),b),1));g.addColorStop(.28,rgba(scl(mixc(col,WHITE,.12),b),1));g.addColorStop(.75,rgba(scl(col,b*.55),1));g.addColorStop(1,rgba(scl(col,b*.18),1));
+ x.fillStyle=g;x.beginPath();x.arc(r,r,r*.97,0,TAU);x.fill();return c}
+function blobSpr(seed,col,n,spread,size,o){o=o||{};const rnd=mulberry32(seed),c=mk(size,size),x=c.getContext('2d'),r=size/2,ax=o.ax||1,ay=o.ay||1,sub=o.sub||1,S=[];
+ for(let i=0;i<n;i++){const a=rnd()*TAU,d=Math.sqrt(rnd())*spread*r;S.push([r+Math.cos(a)*d*ax,r+Math.sin(a)*d*ay,r*(.16+rnd()*.13)*sub])}
+ const dark=scl(col,.3),lite=mixc(col,WHITE,.4);
+ x.fillStyle=rgba(dark,1);for(const s of S){x.beginPath();x.arc(s[0],s[1],s[2]+size*.022,0,TAU);x.fill()}
+ for(const s of S){const g=x.createRadialGradient(s[0]-s[2]*.35,s[1]-s[2]*.35,0,s[0],s[1],s[2]);g.addColorStop(0,rgba(lite,1));g.addColorStop(1,rgba(col,1));x.fillStyle=g;x.beginPath();x.arc(s[0],s[1],s[2],0,TAU);x.fill()}
+ return c}
+function blurSpr(img,px){const c=mk(img.width,img.height),x=c.getContext('2d');try{x.filter='blur('+px+'px)'}catch(e){}x.drawImage(img,0,0);return c}
+function riboSpr(size){const c=mk(size,size),x=c.getContext('2d');const L=blobSpr(501,[205,90,190],16,.55,Math.round(size*.8)),S=blobSpr(502,[245,175,90],10,.5,Math.round(size*.58));x.drawImage(L,0,size*.2);x.drawImage(S,size*.42,0);return c}
+/* world->screen transform for 2D scenes */
+function mkT(s,cx,cy,roll){const c=Math.cos(roll),sn=Math.sin(roll);return{s,c,sn,cx,cy,
+ set(){ctx.setTransform(DPR*s*c,DPR*s*sn,-DPR*s*sn,DPR*s*c,DPR*(W/2-s*(c*cx-sn*cy)),DPR*(H/2-s*(sn*cx+c*cy)))},
+ pt(x,y){const dx=x-cx,dy=y-cy;return[W/2+s*(c*dx-sn*dy),H/2+s*(sn*dx+c*dy)]},
+ inv(px,py){const dx=(px-W/2)/s,dy=(py-H/2)/s;return[cx+c*dx+sn*dy,cy-sn*dx+c*dy]},
+ rad(){return Math.hypot(W,H)/2/s}}}
+/* labels (annotations) */
+const LABELS=[];
+function lab(p,text,dx,dy){if(p&&p[0]>-50&&p[0]<W+50&&p[1]>-50&&p[1]<H+50)LABELS.push({x:p[0],y:p[1],text,dx,dy})}
+function resetCtx(){ctx.setTransform(DPR,0,0,DPR,0,0);ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';ctx.setLineDash([])}
+/* screen-space helpers for 3D scenes */
+function toScr(dx,dy,s,roll){const c=Math.cos(roll),sn=Math.sin(roll);return[W/2+s*(c*dx-sn*dy),H/2+s*(sn*dx+c*dy)]}
+
+/* ---------------- timeline ---------------- */
+const STOPS=[{z:5.25,hold:13,travel:6},{z:6.1,hold:8,travel:5},{z:6.97,hold:9,travel:5},{z:8.0,hold:9,travel:5.5},{z:8.72,hold:9,travel:5.5},{z:9.45,hold:9,travel:9.5},{z:13.75,hold:9,travel:5},{z:14.45,hold:10,travel:7},{z:16.35,hold:1e9,travel:0}];
+const DRIFT=.06,SEGS=[];
+{let T=0;STOPS.forEach((s,i)=>{const last=i===STOPS.length-1;SEGS.push({type:'hold',i,t0:T,t1:T+s.hold,z0:s.z,z1:s.z+(last?0:DRIFT)});T+=s.hold;if(!last){SEGS.push({type:'travel',i,t0:T,t1:T+s.travel,z0:s.z+DRIFT,z1:STOPS[i+1].z});T+=s.travel}})}
+function timeline(t){for(const g of SEGS){if(t<g.t1){const u=clamp((g.t1>1e8?0:(t-g.t0)/(g.t1-g.t0)),0,1);let z;
+ if(g.type==='hold')z=g.i===STOPS.length-1?g.z0+.3*(1-Math.exp(-(t-g.t0)/22)):lerp(g.z0,g.z1,u);else z=lerp(g.z0,g.z1,easeIO(u));return{z,seg:g,u}}}return{z:16.35,seg:SEGS[SEGS.length-1],u:0}}
+const env=(e,z)=>(e[0]<0?1:sstep(e[0],e[1],z))*(1-sstep(e[2],e[3],z));
+
+/* ---------------- shared sprites ---------------- */
+const SPR={
+ riboDot:glowSpr([240,120,205],32,.3),
+ ribo:riboSpr(256),
+ rnap:blobSpr(601,[140,110,240],20,.56,256,{ax:1.08,ay:.9}),
+ speck:[blobSpr(11,[70,190,180],5,.4,32),blobSpr(12,[90,140,230],5,.4,32),blobSpr(13,[120,205,110],5,.4,32)],
+ memP:blobSpr(14,[230,210,110],5,.4,32),
+ bead:ballSpr([255,170,60],1,64),
+ beadDim:ballSpr([255,170,60],.55,64)
+};
+
+/* Coupled transcription-translation complex ("expressome"), coordinates in nm relative to the focus point on the DNA */
+const EXPR=(()=>{const rnd=mulberry32(4321),m=[];let x=31,y=-7,a=-.75;
+ for(let i=0;i<170;i++){m.push(x,y);a+=(rnd()-.5)*.22+.004;x+=Math.cos(a);y+=Math.sin(a)}
+ const ribos=[],lens=[70,52,36,21,9];
+ [18,50,82,114,146].forEach((idx,k)=>{const x0=m[idx*2],y0=m[idx*2+1],tx=m[idx*2+2]-m[idx*2-2],ty=m[idx*2+3]-m[idx*2-1],ang=Math.atan2(ty,tx);
+  const nx=-Math.sin(ang),ny=Math.cos(ang);const cx=x0+nx*9,cy=y0+ny*9;
+  // nascent polypeptide: compact-ish random walk leaving the exit tunnel
+  const ch=[];let px=cx+nx*9,py=cy+ny*9,pa=Math.atan2(ny,nx);const n=Math.round(lens[k]/.6);
+  for(let j=0;j<n;j++){ch.push(px,py);pa+=(rnd()-.5)*1.3;const dx=px-(cx+nx*16),dy=py-(cy+ny*16),d=Math.hypot(dx,dy);if(d>6+lens[k]*.12)pa=Math.atan2(-dy,-dx)+(rnd()-.5);px+=Math.cos(pa)*.6;py+=Math.sin(pa)*.6}
+  ribos.push({x:cx,y:cy,rot:ang,chain:ch})});
+ return{rnap:{x:24,y:-1,rot:-.2},mrna:m,ribos}})();
+
+function drawExpr(t,px,alpha){
+ ctx.globalAlpha=alpha;ctx.globalCompositeOperation='source-over';
+ const m=EXPR.mrna;ctx.beginPath();for(let i=0;i<m.length/2;i++){const x=m[i*2]+.5*noise3(i*.1,t*.4,1),y=m[i*2+1]+.5*noise3(i*.1,t*.4,7);i?ctx.lineTo(x,y):ctx.moveTo(x,y)}
+ ctx.strokeStyle='rgba(255,150,195,0.95)';ctx.lineWidth=Math.max(.6,1.1*px);ctx.lineJoin='round';ctx.stroke();
+ EXPR.ribos.forEach((r,k)=>{const c=r.chain;ctx.beginPath();for(let i=0;i<c.length/2;i++){const x=c[i*2]+.35*noise3(i*.2,t*.6,k*3),y=c[i*2+1]+.35*noise3(i*.2,t*.6,k*3+9);i?ctx.lineTo(x,y):ctx.moveTo(x,y)}
+  ctx.strokeStyle='rgba(165,245,140,0.95)';ctx.lineWidth=Math.max(.45,1*px);ctx.stroke()});
+ EXPR.ribos.forEach(r=>{ctx.save();ctx.translate(r.x,r.y);ctx.rotate(r.rot+Math.PI);ctx.drawImage(SPR.ribo,-13,-13,26,26);ctx.restore()});
+ const R=EXPR.rnap;ctx.save();ctx.translate(R.x,R.y);ctx.rotate(R.rot+.05*Math.sin(t*.7));ctx.globalAlpha=alpha*.96;ctx.drawImage(SPR.rnap,-9.5,-9.5,19,19);ctx.restore();ctx.globalAlpha=alpha}
+
+/* ================= SCENE 1: the cell (units: nm) ================= */
+const Cell={env:[-1,-1,6.55,6.95]};
+(()=>{
+ const rnd=mulberry32(1234),A=760,R=440,F={x:110,y:205};
+ const sdf=(x,y)=>Math.hypot(x-clamp(x,-A,A),y)-R;
+ const nucF=(x,y)=>x*x/(620*620)+y*y/(255*255)+.5*noise3(x*.0045+10.3,y*.0045+2.1,1.7);
+ const PER=4*A+TAU*R;
+ function perim(u){let d=((u%1)+1)%1*PER;
+  if(d<2*A)return{x:-A+d,y:-R,nx:0,ny:-1};d-=2*A;
+  if(d<Math.PI*R){const a=-Math.PI/2+d/R;return{x:A+R*Math.cos(a),y:R*Math.sin(a),nx:Math.cos(a),ny:Math.sin(a)}}d-=Math.PI*R;
+  if(d<2*A)return{x:A-d,y:R,nx:0,ny:1};d-=2*A;
+  const a=Math.PI/2+d/R;return{x:-A+R*Math.cos(a),y:R*Math.sin(a),nx:Math.cos(a),ny:Math.sin(a)}}
+ function capsule(off){const r=R+off;ctx.beginPath();ctx.moveTo(-A,-r);ctx.lineTo(A,-r);ctx.arc(A,0,r,-Math.PI/2,Math.PI/2);ctx.lineTo(-A,r);ctx.arc(-A,0,r,Math.PI/2,Math.PI*1.5);ctx.closePath()}
+ const inCell=m=>{for(;;){const x=(rnd()*2-1)*(A+R),y=(rnd()*2-1)*R;if(sdf(x,y)<-m)return[x,y]}};
+
+ /* chromosome: worm-like chains (persistence ~50 nm) confined to the nucleoid, drawn as plectonemic supercoils */
+ const STEP=3.2;
+ function walk(x,y,a,n,fixed,turn){const p=[x,y];for(let i=1;i<n;i++){if(i>fixed){a+=(rnd()-.5)*turn;const f=nucF(x,y);
+   if(f>.85){let d=Math.atan2(-y*2.5,-x)-a;d=Math.atan2(Math.sin(d),Math.cos(d));a+=d*Math.min(.35,(f-.85)*1.2)}
+   if(sdf(x,y)>-70){let d=Math.atan2(-y,-x)-a;d=Math.atan2(Math.sin(d),Math.cos(d));a+=d*.4}}
+  x+=Math.cos(a)*STEP;y+=Math.sin(a)*STEP;p.push(x,y)}return p}
+ const fw=walk(F.x,F.y,0,170,30,.9),bw=walk(F.x,F.y,Math.PI,170,30,.9),c0=[];
+ for(let i=bw.length/2-1;i>0;i--)c0.push(bw[i*2],bw[i*2+1]);for(let i=0;i<fw.length;i++)c0.push(fw[i]);
+ const CH0=new Float32Array(c0);
+ const CHUNKS=[],FAR=[];
+ function twist(p,w,period,ph){const n=p.length/2,a=new Float32Array(p.length),b=new Float32Array(p.length);
+  for(let i=0;i<n;i++){const i0=Math.max(0,i-1),i1=Math.min(n-1,i+1),tx=p[i1*2]-p[i0*2],ty=p[i1*2+1]-p[i0*2+1],l=Math.hypot(tx,ty)||1,nx=-ty/l,ny=tx/l,o=w*Math.sin(i*STEP/period*TAU+ph);
+   a[i*2]=p[i*2]+nx*o;a[i*2+1]=p[i*2+1]+ny*o;b[i*2]=p[i*2]-nx*o;b[i*2+1]=p[i*2+1]-ny*o}return[a,b]}
+ function chunk(arr){const n=arr.length/2;for(let i0=0;i0<n-1;i0+=48){const i1=Math.min(n-1,i0+48);let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(let i=i0;i<=i1;i++){x0=Math.min(x0,arr[i*2]);x1=Math.max(x1,arr[i*2]);y0=Math.min(y0,arr[i*2+1]);y1=Math.max(y1,arr[i*2+1])}CHUNKS.push({arr,i0,i1,x0,x1,y0,y1})}}
+ for(let c=0;c<46;c++){let x,y;do{[x,y]=inCell(80)}while(nucF(x,y)>.75);const p=walk(x,y,rnd()*TAU,430,0,.85);
+  const [sa,sb]=twist(p,4.5,24,rnd()*TAU);chunk(sa);chunk(sb);const f=[];for(let i=0;i<p.length/2;i+=5)f.push(p[i*2],p[i*2+1]);FAR.push(new Float32Array(f))}
+ /* nucleoid haze */
+ const NH=mk(320,140);{const x=NH.getContext('2d'),id=x.createImageData(320,140);for(let j=0;j<140;j++)for(let i=0;i<320;i++){const wx=-800+i*5,wy=-350+j*5,k=(j*320+i)*4,f=nucF(wx,wy);id.data[k]=80;id.data[k+1]=160;id.data[k+2]=255;id.data[k+3]=sstep(1.15,.55,f)*120}x.putImageData(id,0,0)}
+ /* crowded cytoplasm texture for the far view */
+ const CT=mk(1100,404);{const x=CT.getContext('2d'),cols=[[70,190,180],[90,140,230],[120,205,110],[230,120,200]];for(let i=0;i<70000;i++){const [wx,wy]=inCell(30);x.fillStyle=rgba(cols[(rnd()*4)|0],.25+rnd()*.35);const r=.5+rnd()*1.1;x.fillRect((wx+A+R)/(2*(A+R))*1100-r/2,(wy+R)/(2*R)*404-r/2,r,r)}}
+ /* ribosomes: free + polysomes */
+ const RB=[],POLY=[];
+ for(let p=0;p<40;p++){let x,y;do{[x,y]=inCell(70)}while(nucF(x,y)<1.05);let a=rnd()*TAU;const n=5+(rnd()*6|0),pts=[];for(let k=0;k<n;k++){a+=(rnd()-.5)*.7;x+=Math.cos(a)*30;y+=Math.sin(a)*30;if(sdf(x,y)>-40)break;RB.push([x,y,a+Math.PI/2+(rnd()-.5)*.4,rnd()*TAU]);pts.push(x,y)}if(pts.length>4)POLY.push(pts)}
+ while(RB.length<2300){const [x,y]=inCell(40);if(nucF(x,y)<1&&rnd()<.85)continue;if(Math.hypot(x-F.x,y-F.y)<90)continue;RB.push([x,y,rnd()*TAU,rnd()*TAU])}
+ /* small proteins */
+ const NS=9000,SX=new Float32Array(NS),SY=new Float32Array(NS),SR=new Float32Array(NS),SC=new Uint8Array(NS),SP=new Float32Array(NS);
+ for(let i=0;i<NS;i++){let x,y;do{[x,y]=inCell(32)}while(nucF(x,y)<1&&rnd()<.5);SX[i]=x;SY[i]=y;SR[i]=2.5+rnd()*2.2;SC[i]=rnd()*3|0;SP[i]=rnd()*TAU}
+ /* flagella: peritrichous, bent into a trailing bundle */
+ const FLAG=[0.08,0.2,0.3,0.58,0.7,0.8,0.93].map(u=>{const p=perim(u+(rnd()-.5)*.02);let x=p.x,y=p.y,dx=p.nx,dy=p.ny;const pts=[];
+  for(let i=0;i<175;i++){pts.push(x,y,dx,dy);let tx=-1,ty=-y*.0011;const tl=Math.hypot(tx,ty);tx/=tl;ty/=tl;dx+=(tx-dx)*.06;dy+=(ty-dy)*.06;
+   const sd=sdf(x,y);if(sd<90){const gx=(sdf(x+1,y)-sdf(x-1,y)),gy=(sdf(x,y+1)-sdf(x,y-1)),gl=Math.hypot(gx,gy)||1;dx+=gx/gl*.25;dy+=gy/gl*.25}
+   const l=Math.hypot(dx,dy);dx/=l;dy/=l;x+=dx*40;y+=dy*40}return{pts,ph:rnd()*TAU,bx:p.x,by:p.y}});
+ const FIMB=[];for(let i=0;i<170;i++){const p=perim(rnd());FIMB.push({x:p.x,y:p.y,a:Math.atan2(p.ny,p.nx)+(rnd()-.5)*.7,len:180+rnd()*650,b:(rnd()-.5)*.5,ph:rnd()*TAU})}
+ const LPS=[];for(let i=0;i<1600;i++){const p=perim(i/1600+rnd()*.0003);LPS.push(p.x,p.y,p.nx,p.ny,8+rnd()*16)}
+ const IMP=[];for(let i=0;i<520;i++){const p=perim(rnd());IMP.push(p.x-p.nx*27,p.y-p.ny*27)}
+ function flagPath(f,t){const P=f.pts,n=P.length/4;ctx.beginPath();for(let i=0;i<n;i++){const s=i*40,Am=190*sstep(0,900,s),o=Am*Math.sin(s/2300*TAU-TAU*.55*t+f.ph),x=P[i*4]-P[i*4+3]*o,y=P[i*4+1]+P[i*4+2]*o;i?ctx.lineTo(x,y):ctx.moveTo(x,y)}}
+ function membrane(off,col,s,px){ctx.strokeStyle=rgba(col,.85);if(s*7>7){ctx.lineWidth=Math.max(2,.8*px);capsule(off+2.3);ctx.stroke();capsule(off-2.3);ctx.stroke()}else{ctx.lineWidth=Math.max(7,1.2*px);capsule(off);ctx.stroke()}}
+
+ Cell.draw=(z,a,t,dt,roll,stop)=>{
+  const s=D/Math.pow(10,9-z),px=1/s,k=easeIO(sstep(5.35,6.45,z));
+  const T=mkT(s,lerp(0,F.x,k),lerp(0,F.y,k),roll);T.set();const vr=T.rad()+30;
+  const vis=(x,y,m)=>Math.abs(x-T.cx)<vr+m&&Math.abs(y-T.cy)<vr+m;
+  ctx.lineCap='round';ctx.lineJoin='round';
+  /* fimbriae + flagella (outside) */
+  ctx.globalCompositeOperation='lighter';ctx.globalAlpha=a;
+  ctx.beginPath();for(const f of FIMB){if(!vis(f.x,f.y,f.len))continue;const w=Math.sin(t*.9+f.ph)*.07,ang=f.a+w,ex=f.x+Math.cos(ang)*f.len,ey=f.y+Math.sin(ang)*f.len,
+   qx=f.x+Math.cos(f.a)*f.len*.5-Math.sin(f.a)*f.len*f.b,qy=f.y+Math.sin(f.a)*f.len*.5+Math.cos(f.a)*f.len*f.b;ctx.moveTo(f.x,f.y);ctx.quadraticCurveTo(qx,qy,ex,ey)}
+  ctx.strokeStyle='rgba(255,230,190,0.2)';ctx.lineWidth=Math.max(7,.6*px);ctx.stroke();
+  for(const f of FLAG){flagPath(f,t);ctx.strokeStyle='rgba(255,210,140,0.07)';ctx.lineWidth=Math.max(80,6*px);ctx.stroke();ctx.strokeStyle='rgba(255,228,175,0.65)';ctx.lineWidth=Math.max(20,1.2*px);ctx.stroke()}
+  if(s>.3){ctx.strokeStyle='rgba(255,220,150,0.7)';ctx.lineWidth=Math.max(3,.8*px);for(const f of FLAG){ctx.beginPath();ctx.arc(f.bx,f.by,22,0,TAU);ctx.stroke()}}
+  /* body */
+  ctx.globalCompositeOperation='source-over';
+  capsule(0);ctx.fillStyle='rgba(22,34,48,0.96)';ctx.fill();
+  capsule(-27);const g=ctx.createRadialGradient(0,0,50,0,0,A+R);g.addColorStop(0,'rgba(16,58,78,1)');g.addColorStop(1,'rgba(9,32,50,1)');ctx.fillStyle=g;ctx.fill();
+  ctx.save();capsule(-27);ctx.clip();
+  const ta=1-sstep(5.6,6.0,z);if(ta>0){ctx.globalAlpha=a*ta;ctx.drawImage(CT,-A-R,-R,2*(A+R),2*R)}
+  ctx.globalCompositeOperation='lighter';ctx.globalAlpha=a*.6*(1-.7*sstep(5.8,6.4,z));ctx.drawImage(NH,-800,-350,1600,700);
+  /* DNA */
+  const na=sstep(5.55,5.9,z);
+  if(na<1){ctx.globalAlpha=a*(1-na);ctx.beginPath();for(const f of FAR){ctx.moveTo(f[0],f[1]);for(let i=2;i<f.length;i+=2)ctx.lineTo(f[i],f[i+1])}ctx.strokeStyle='rgba(110,185,255,0.22)';ctx.lineWidth=Math.max(9,.8*px);ctx.stroke()}
+  if(na>0){ctx.globalAlpha=a*na;ctx.beginPath();for(const c of CHUNKS){if(c.x1<T.cx-vr||c.x0>T.cx+vr||c.y1<T.cy-vr||c.y0>T.cy+vr)continue;const r=c.arr;ctx.moveTo(r[c.i0*2],r[c.i0*2+1]);for(let i=c.i0+1;i<=c.i1;i++)ctx.lineTo(r[i*2],r[i*2+1])}
+   ctx.strokeStyle='rgba(120,200,255,0.34)';ctx.lineWidth=Math.max(2,.55*px);ctx.stroke()}
+  ctx.globalAlpha=a;ctx.beginPath();ctx.moveTo(CH0[0],CH0[1]);for(let i=2;i<CH0.length;i+=2)ctx.lineTo(CH0[i],CH0[i+1]);ctx.strokeStyle='rgba(175,230,255,0.9)';ctx.lineWidth=Math.max(2,1*px);ctx.stroke();
+  ctx.globalCompositeOperation='source-over';
+  /* proteins */
+  if(z>5.5){ctx.globalAlpha=a*sstep(5.5,5.95,z);const mr=.6*px;for(let i=0;i<NS;i++){const x=SX[i]+1.5*Math.sin(t*1.7+SP[i]),y=SY[i]+1.5*Math.cos(t*1.3+SP[i]*1.3);if(Math.abs(x-T.cx)>vr||Math.abs(y-T.cy)>vr)continue;const r=Math.max(SR[i],mr);ctx.drawImage(SPR.speck[SC[i]],x-r,y-r,2*r,2*r)}}
+  /* mRNA of polysomes */
+  if(z>5.8){ctx.globalAlpha=a*sstep(5.8,6.1,z);ctx.beginPath();for(const p of POLY){ctx.moveTo(p[0],p[1]);for(let i=2;i<p.length;i+=2)ctx.lineTo(p[i]+3*Math.sin(t+i),p[i+1]+3*Math.cos(t*.8+i))}ctx.strokeStyle='rgba(255,150,195,0.7)';ctx.lineWidth=Math.max(1,.8*px);ctx.stroke()}
+  /* ribosomes */
+  ctx.globalAlpha=a;const big=26*s>6;
+  for(const r of RB){const x=r[0]+2*Math.sin(t*1.1+r[3]),y=r[1]+2*Math.cos(t*.9+r[3]);if(Math.abs(x-T.cx)>vr||Math.abs(y-T.cy)>vr)continue;
+   if(!big){const d=Math.max(30,3.2*px);ctx.drawImage(SPR.riboDot,x-d/2,y-d/2,d,d)}else{ctx.save();ctx.translate(x,y);ctx.rotate(r[2]);ctx.drawImage(SPR.ribo,-13,-13,26,26);ctx.restore()}}
+  if(z>5.8){ctx.save();ctx.translate(F.x,F.y);drawExpr(t,px,a*sstep(5.8,6.2,z));ctx.restore()}
+  ctx.restore();
+  /* envelope */
+  ctx.globalCompositeOperation='lighter';ctx.globalAlpha=a;
+  capsule(4);ctx.strokeStyle='rgba(255,190,110,0.06)';ctx.lineWidth=Math.max(60,16*px);ctx.stroke();
+  if(s>.35){ctx.globalAlpha=a*sstep(.35,1,s);ctx.beginPath();for(let i=0;i<LPS.length;i+=5){const x=LPS[i],y=LPS[i+1];if(!vis(x,y,40))continue;const L=LPS[i+4],w=2*Math.sin(t*2+i);ctx.moveTo(x+LPS[i+2]*3.5,y+LPS[i+3]*3.5);ctx.lineTo(x+LPS[i+2]*(3.5+L)-LPS[i+3]*w,y+LPS[i+3]*(3.5+L)+LPS[i+2]*w)}ctx.strokeStyle='rgba(255,215,160,0.5)';ctx.lineWidth=Math.max(1.2,.5*px);ctx.stroke();ctx.globalAlpha=a}
+  membrane(0,[255,205,120],s,px);
+  capsule(-13);ctx.strokeStyle='rgba(150,240,170,0.5)';ctx.lineWidth=Math.max(5,1*px);ctx.stroke();
+  membrane(-27,[255,185,100],s,px);
+  if(s>.9){ctx.globalCompositeOperation='source-over';ctx.globalAlpha=a*sstep(.9,1.6,s);for(let i=0;i<IMP.length;i+=2){const x=IMP[i],y=IMP[i+1];if(!vis(x,y,10))continue;ctx.drawImage(SPR.memP,x-4.5,y-4.5,9,9)}}
+  /* annotations */
+  if(stop===0){const f=FLAG[2],i=70,P=f.pts,sA=i*40,o=190*Math.sin(sA/2300*TAU-TAU*.55*t+f.ph);
+   lab(T.pt(P[i*4]-P[i*4+3]*o,P[i*4+1]+P[i*4+2]*o),'Flagellum · 20 nm thick, ~100 rev/s',30,-60);
+   const fb=FIMB.find(q=>q.y<-R+1&&q.x>-200&&q.x<300)||FIMB[0];lab(T.pt(fb.x+Math.cos(fb.a)*fb.len*.8,fb.y+Math.sin(fb.a)*fb.len*.8),'Fimbriae (pili)',40,-40);
+   const pe=perim(.64);lab(T.pt(pe.x,pe.y),'Cell envelope · 3 layers, ~30 nm',40,60);
+   lab(T.pt(-280,-30),'Nucleoid — the chromosome',-70,-80);lab(T.pt(-980,210),'Ribosomes',-60,70)}
+  if(stop===1){const [wx,wy]=T.inv(W*.3,H*.72);let best=null,bd=1e9;for(const r of RB){const d=Math.hypot(r[0]-wx,r[1]-wy);if(d<bd){bd=d;best=r}}
+   if(best)lab(T.pt(best[0],best[1]),'Ribosome · 21 nm',-60,50);
+   const [qx,qy]=T.inv(W*.62,H*.42);let bp=null;bd=1e9;for(const f of FAR)for(let i=0;i<f.length;i+=2){const d=Math.hypot(f[i]-qx,f[i+1]-qy);if(d<bd){bd=d;bp=[f[i],f[i+1]]}}
+   if(bp)lab(T.pt(bp[0],bp[1]),'Supercoiled DNA',50,-50);
+   lab(T.pt(T.cx+120,R-27),'Inner membrane',40,-40);lab(T.pt(F.x,F.y),'An active gene',-50,-70)}
+ };
+})();
+
+/* ================= SCENE 2: molecular machinery (units: nm, origin on the DNA) ================= */
+const seqAt=i=>{if(i===0)return'GC';const v=Math.abs((Math.sin(i*127.1+11.7)*43758.5453)%1);return v<.25?'GC':v<.5?'CG':v<.75?'AT':'TA'};
+const BASECOL={A:'rgba(80,220,125,0.95)',T:'rgba(255,100,100,0.95)',G:'rgba(255,215,80,0.95)',C:'rgba(95,165,255,0.95)'};
+/* stylised B-DNA along curve y=f(x): right-handed, 10.5 bp/turn, 0.338 nm rise, minor/major grooves */
+function duplex(f,x0,x1,spin,px,alpha){
+ const i0=Math.ceil(x0/.338),i1=Math.floor(x1/.338),n=i1-i0+1;if(n<2)return;
+ const r=.95,dl=2.55,P=new Float32Array(n*6);
+ for(let k=0;k<n;k++){const i=i0+k,x=i*.338,y=f(x),yp=f(x+.2),l=Math.hypot(.2,yp-y),nx=-(yp-y)/l,ny=.2/l,ph=i*TAU/10.5+spin,o1=-r*Math.cos(ph),o2=-r*Math.cos(ph+dl);
+  P[k*6]=x+nx*o1;P[k*6+1]=y+ny*o1;P[k*6+2]=Math.sin(ph);P[k*6+3]=x+nx*o2;P[k*6+4]=y+ny*o2;P[k*6+5]=Math.sin(ph+dl)}
+ ctx.globalAlpha=alpha;ctx.lineCap='round';
+ const paths={A:new Path2D(),T:new Path2D(),G:new Path2D(),C:new Path2D()};
+ for(let k=0;k<n;k++){const s=seqAt(i0+k),mx=(P[k*6]+P[k*6+3])/2,my=(P[k*6+1]+P[k*6+4])/2;paths[s[0]].moveTo(P[k*6],P[k*6+1]);paths[s[0]].lineTo(mx,my);paths[s[1]].moveTo(mx,my);paths[s[1]].lineTo(P[k*6+3],P[k*6+4])}
+ ctx.lineWidth=Math.max(.3,.6*px);for(const b in paths){ctx.strokeStyle=BASECOL[b];ctx.stroke(paths[b])}
+ for(const front of[0,1]){const pa=new Path2D();for(const o of[0,3])for(let k=0;k<n-1;k++){const d=P[k*6+o+2];if((d>=0)!==!!front)continue;pa.moveTo(P[k*6+o],P[k*6+o+1]);pa.lineTo(P[k*6+6+o],P[k*6+7+o])}
+  ctx.strokeStyle=front?'rgba(255,190,110,0.95)':'rgba(170,110,60,0.8)';ctx.lineWidth=Math.max(.45,.8*px);ctx.stroke(pa);
+  const br=Math.max(.34,1.2*px);for(const o of[0,3])for(let k=0;k<n;k++){const d=P[k*6+o+2];if((d>=0)!==!!front)continue;ctx.drawImage(front?SPR.bead:SPR.beadDim,P[k*6+o]-br,P[k*6+o+1]-br,2*br,2*br)}}
+}
+const Mol={env:[6.55,6.9,7.45,7.75]};
+(()=>{
+ const rnd=mulberry32(77);
+ const dnaY=x=>x>=0?9*(1-Math.cos(Math.min(x,160)/55)):-7*(1-Math.cos(Math.max(x,-160)/48));
+ const TYPES=[
+  {sz:5.5,col:[70,190,180],n:6,sp:.45,count:170},{sz:8,col:[90,140,230],n:10,sp:.5,count:80},{sz:7,col:[120,205,110],n:8,sp:.5,count:70},
+  {sz:7.5,col:[235,115,160],n:7,sp:.55,count:50,ay:.45},{sz:15,col:[160,220,120],n:22,sp:.56,count:7},{sz:4,col:[250,190,90],n:4,sp:.4,count:120},{sz:26,ribo:1,count:14}];
+ TYPES.forEach((T,ti)=>{T.spr=[0,1,2].map(v=>T.ribo?SPR.ribo:blobSpr(900+ti*10+v,T.col,T.n,T.sp,T.sz>10?192:96,{ay:T.ay}));T.far=T.spr.map(s=>blurSpr(s,T.sz>10?6:3))});
+ const MOLS=[];
+ const blocked=(x,y,r)=>{if(Math.abs(y-dnaY(x))<3+r)return true;if(Math.hypot(x-24,y+1)<11+r)return true;for(const b of EXPR.ribos)if(Math.hypot(x-b.x,y-b.y)<14+r)return true;for(let i=0;i<EXPR.mrna.length;i+=8)if(Math.hypot(x-EXPR.mrna[i],y-EXPR.mrna[i+1])<2+r)return true;return false};
+ TYPES.forEach((T,ti)=>{for(let layer=0;layer<2;layer++)for(let c=0;c<T.count*(layer?1:.8);c++){let x,y,tries=0;do{x=(rnd()*2-1)*190;y=(rnd()*2-1)*120;tries++}while(layer&&blocked(x,y,T.sz/2)&&tries<40);if(layer&&tries>=40)continue;
+  MOLS.push({ti,layer,x,y,v:rnd()*3|0,rot:rnd()*TAU,ph:rnd()*100,s:layer?1:.85})}});
+ MOLS.sort((a,b)=>a.layer-b.layer);
+ const HU=[-92,-61,-37,58,96,131].map(x=>({x,y:dnaY(x)+(Math.random()<.5?-1.5:1.5)}));
+ const huSpr=blobSpr(955,[240,150,70],5,.4,96);
+ const BG=[{a:.3,ox:-60,oy:-85},{a:-.4,ox:70,oy:85},{a:1.9,ox:-150,oy:60}];
+ Mol.draw=(z,a,t,dt,roll,stop)=>{
+  const s=D/Math.pow(10,9-z),px=1/s,ko=sstep(6.7,6.95,z)*(1-sstep(7.1,7.45,z)),T=mkT(s,12*ko,-12*ko,roll);T.set();const vr=T.rad()+60;
+  const drawMol=(m,far)=>{const TT=TYPES[m.ti],x=m.x+2.2*noise3(m.ph,t*.3,0),y=m.y+2.2*noise3(m.ph,t*.3,5);if(Math.abs(x)>vr+20||Math.abs(y)>vr+20)return;
+   const sz=TT.sz*m.s;ctx.save();ctx.translate(x,y);ctx.rotate(m.rot+.6*noise3(m.ph,t*.2,9));ctx.drawImage(far?TT.far[m.v]:TT.spr[m.v],-sz/2,-sz/2,sz,sz);ctx.restore()};
+  ctx.globalCompositeOperation='source-over';
+  ctx.globalAlpha=a*.4;for(const m of MOLS)if(!m.layer)drawMol(m,true);
+  for(const b of BG){ctx.save();ctx.translate(b.ox,b.oy);ctx.rotate(b.a);duplex(x=>6*Math.sin(x/40),-vr-80,vr+80,t*.3+b.a,px,a*.35);ctx.restore()}
+  duplex(dnaY,Math.max(-200,-vr-10),Math.min(200,vr+10),t*.35,px,a);
+  ctx.globalAlpha=a;for(const h of HU)ctx.drawImage(huSpr,h.x-2.6,h.y-2.6,5.2,5.2);
+  drawExpr(t,px,a);
+  ctx.globalAlpha=a;for(const m of MOLS)if(m.layer)drawMol(m,false);
+  if(stop===2){lab(T.pt(-62,dnaY(-62)),'DNA double helix · 2 nm wide',-40,70);lab(T.pt(24,-1),'RNA polymerase',60,55);
+   const m=EXPR.mrna;lab(T.pt(m[64],m[65]),'messenger RNA',70,20);const r0=EXPR.ribos[1];lab(T.pt(r0.x,r0.y),'Ribosome translating the mRNA',70,-30);
+   const c=EXPR.ribos[0].chain;lab(T.pt(c[c.length-2],c[c.length-1]),'New protein chain',-70,-40);
+   const tr=MOLS.find(q=>q.layer&&q.ti===3&&Math.abs(T.pt(q.x,q.y)[0]-W*.3)<W*.2&&Math.abs(T.pt(q.x,q.y)[1]-H*.7)<H*.2);if(tr)lab(T.pt(tr.x,tr.y),'transfer RNA',-50,40)}
+ };
+})();
+
+/* ================= SCENE 3+4: atomic B-DNA (units: Å) ================= */
+const ELEM={H:{c:[235,240,248],r:1.1},C:{c:[150,158,168],r:1.7},N:{c:[70,110,255],r:1.55},O:{c:[255,55,55],r:1.52},P:{c:[255,150,30],r:1.8}};
+const ELS='HCNOP',ESPR={};for(const e of ELS)ESPR[e]=[0,1,2,3,4,5].map(l=>ballSpr(ELEM[e].c,.28+l*.16,256));
+const Dna={env:[7.45,7.75,9.1,9.35],spinAcc:0,theta:0};
+(()=>{
+ const V=(x,y)=>({x,y}),vadd=(a,b)=>V(a.x+b.x,a.y+b.y),vsub=(a,b)=>V(a.x-b.x,a.y-b.y),vmul=(a,k)=>V(a.x*k,a.y*k),vlen=a=>Math.hypot(a.x,a.y),vnrm=a=>vmul(a,1/vlen(a));
+ const vrot=(a,t)=>V(a.x*Math.cos(t)-a.y*Math.sin(t),a.x*Math.sin(t)+a.y*Math.cos(t)),polar=(c,r,d)=>V(c.x+r*Math.cos(d*DEG),c.y+r*Math.sin(d*DEG));
+ const cent=ps=>V(ps.reduce((s,p)=>s+p.x,0)/ps.length,ps.reduce((s,p)=>s+p.y,0)/ps.length),ext=(p,from,len)=>vadd(p,vmul(vnrm(vsub(p,from)),len));
+ function pentagon(A,B,away){const run=sg=>{const p=[A,B];for(let k=0;k<3;k++){const a=p[p.length-1],b=p[p.length-2];p.push(vadd(a,vrot(vsub(a,b),sg*72*DEG)))}return p.slice(2)};const a=run(1),b=run(-1);return vlen(vsub(cent(a),away))>vlen(vsub(cent(b),away))?a:b}
+ /* Watson–Crick pair geometry built from ring geometry (1.39 Å bonds, ~2.9 Å H-bond heavy-atom distances) */
+ function pairTemplate(type){const R=1.39,gc=V(-2.84,0),cc=V(2.84,0),L={},Q={};
+  L.N1=polar(gc,R,0);L.C2=polar(gc,R,-60);L.N3=polar(gc,R,-120);L.C4=polar(gc,R,180);L.C5=polar(gc,R,120);L.C6=polar(gc,R,60);
+  const pe=pentagon(L.C5,L.C4,gc);L.N9=pe[0];L.C8=pe[1];L.N7=pe[2];const pc=cent([L.C4,L.C5,L.N9,L.C8,L.N7]);L.H8=ext(L.C8,pc,1.08);L["C1'"]=ext(L.N9,pc,1.47);
+  Q.N3=polar(cc,R,180);Q.C4=polar(cc,R,120);Q.C5=polar(cc,R,60);Q.C6=polar(cc,R,0);Q.N1=polar(cc,R,-60);Q.C2=polar(cc,R,-120);
+  Q["C1'"]=polar(Q.N1,1.47,-60);Q.O2=polar(Q.C2,1.23,-120);Q.H6=polar(Q.C6,1.08,0);const hb=[];
+  if(type==='GC'){L.O6=polar(L.C6,1.23,60);L.N2=polar(L.C2,1.34,-60);L.H1=polar(L.N1,1.01,0);L.H21=polar(L.N2,1.01,0);L.H22=polar(L.N2,1.01,-120);
+   Q.N4=polar(Q.C4,1.34,120);Q.H41=polar(Q.N4,1.01,180);Q.H42=polar(Q.N4,1.01,60);Q.H5=polar(Q.C5,1.08,60);hb.push(['R:H41','L:O6'],['L:H1','R:N3'],['L:H21','R:O2'])}
+  else{L.N6=polar(L.C6,1.34,60);L.H61=polar(L.N6,1.01,0);L.H62=polar(L.N6,1.01,120);L.H2=polar(L.C2,1.08,-60);
+   Q.O4=polar(Q.C4,1.23,120);Q.H3=polar(Q.N3,1.01,180);Q.C7=polar(Q.C5,1.5,60);hb.push(['L:H61','R:O4'],['R:H3','L:N1'])}
+  const cl=L["C1'"],cr=Q["C1'"],M=vmul(vadd(cl,cr),.5),u=vnrm(vsub(cr,cl)),np=V(-u.y,u.x),half=vlen(vsub(cr,cl))/2,h=Math.sqrt(Math.max(0,5.9*5.9-half*half)),O=vadd(M,vmul(np,h));
+  const out={};const add=(pre,d)=>{for(const k in d){const p=vsub(d[k],O);out[pre+k]={x:p.x*u.x+p.y*u.y,y:p.x*np.x+p.y*np.y,el:k[0]}}};add('L:',L);add('R:',Q);return{atoms:out,hb}}
+ const TPL={GC:pairTemplate('GC'),AT:pairTemplate('AT')};Dna.tpl=TPL.GC.atoms;
+ const RISE=3.38,TW=360/10.5,N=64;
+ const BB=[["P",0,8.9,0],["O5'",.15,9.7,.45],["C5'",.31,9.25,-.45],["C4'",.47,8.2,.3],["C3'",.66,8.0,-.45],["O3'",.83,9.0,.25]];
+ const X=[],Y=[],Z=[],EL=[],PR=[],NAME=[];
+ const push=(p,el,pair,name)=>{X.push(p.X);Y.push(p.Y);Z.push(p.Z);EL.push(el);PR.push(pair);NAME.push(name)};
+ for(let i=-N;i<=N;i++){const sq=seqAt(i),T=TPL[sq==='GC'||sq==='CG'?'GC':'AT'],flip=sq==='CG'||sq==='TA'?-1:1,phi=i*TW*DEG,psi=phi+Math.PI/2,c=Math.cos(psi),s=Math.sin(psi);const C1={};
+  for(const k in T.atoms){const a=T.atoms[k];if(a.el==='H'&&i!==0)continue;const x=a.x*flip,y=a.y,p={X:x*c-y*s,Y:x*s+y*c,Z:i*RISE};push(p,a.el,i,k);if(k.endsWith("C1'"))C1[x>0?1:-1]=p}
+  for(const sg of[1,-1]){const at={},cyl=(r,ang,zz)=>({X:r*Math.cos(ang*DEG),Y:r*Math.sin(ang*DEG),Z:zz});
+   for(const[n,u,r,dz]of BB)at[n]=cyl(r,i*TW+sg*(61+u*TW),i*RISE+sg*(-2+u*RISE+dz));
+   const pA=i*TW+sg*61,zP=i*RISE-sg*2;at.OP1=cyl(10.1,pA-sg*3,zP+sg*.8);at.OP2=cyl(9.7,pA+sg*5,zP-sg*1);
+   const mix=(a,b,k,d)=>({X:a.X+(b.X-a.X)*k,Y:a.Y+(b.Y-a.Y)*k,Z:a.Z+(b.Z-a.Z)*k+d}),c1=C1[sg];
+   at["O4'"]=mix(c1,at["C4'"],.55,sg*.95);at["C2'"]=mix(c1,at["C3'"],.55,-sg*.95);
+   for(const k in at)push(at[k],k[0],i,(sg>0?'s1:':'s2:')+k)}}
+ const NA=X.length,SX=new Float32Array(NA),SY=new Float32Array(NA),SD=new Float32Array(NA),SA=new Float32Array(NA),ORD=[];
+ const idx=(pair,name)=>{for(let k=0;k<NA;k++)if(PR[k]===pair&&NAME[k]===name)return k;return -1};
+ const FOC=idx(0,'L:C8');
+ const BONDS=[];for(let a=0;a<NA;a++){if(PR[a]<-4||PR[a]>0)continue;for(let b=a+1;b<NA;b++){if(PR[b]<-4||PR[b]>0)continue;if(EL[a]==='H'&&EL[b]==='H')continue;const d=Math.hypot(X[a]-X[b],Y[a]-Y[b],Z[a]-Z[b]),lim=(EL[a]==='H'||EL[b]==='H')?1.2:1.75;if(d<lim)BONDS.push(a,b)}}
+ const HB=TPL.GC.hb.map(h=>[idx(0,h[0]),idx(0,h[1])]);
+ let T3=[0,0,0],cur={};
+ function proj(x,y,zz,o){const x1=x*cur.ct-y*cur.st,y1=x*cur.st+y*cur.ct;o[0]=x1*cur.cb+zz*cur.sb;o[1]=y1;o[2]=-x1*cur.sb+zz*cur.cb;return o}
+ const tmp=[0,0,0];
+ function scr(x,y,zz){proj(x,y,zz,tmp);return toScr(tmp[0]-T3[0],-(tmp[1]-T3[1]),cur.s,cur.roll)}
+ Dna.draw=(z,a,t,dt,roll,stop)=>{
+  const s=D/Math.pow(10,10-z),kTop=easeIO(sstep(8.15,8.66,z)),beta=lerp(1.38,0,kTop),kBS=sstep(8.42,8.68,z),kPan=easeIO(sstep(8.78,9.12,z));
+  Dna.spinAcc+=dt*.3*(1-kTop);const th=Dna.spinAcc+4.2*sstep(7.4,8.66,z)+.45*Math.sin(.33*t)*(1-kTop);Dna.theta=th;
+  cur={ct:Math.cos(th),st:Math.sin(th),cb:Math.cos(beta),sb:Math.sin(beta),s,roll};
+  const f=proj(X[FOC],Y[FOC],Z[FOC],[0,0,0]);T3=[f[0]*kPan,f[1]*kPan,f[2]*kPan];
+  const c=Math.cos(roll),sn=Math.sin(roll),rf=lerp(.9,.2,kBS),o=[0,0,0],lim=Math.hypot(W,H)/2+60;ORD.length=0;
+  for(let k=0;k<NA;k++){const zc=PR[k]*RISE;let pa=PR[k]===0?1:Math.exp(-Math.pow(zc/(zc>0?lerp(400,1.2,kTop):lerp(400,3.2,kTop)),2));pa*=1-sstep(50,64,Math.abs(PR[k]));if(pa<.01){SA[k]=0;continue}
+   proj(X[k],Y[k],Z[k],o);const dx=o[0]-T3[0],dy=-(o[1]-T3[1]),sx=W/2+s*(c*dx-sn*dy),sy=H/2+s*(sn*dx+c*dy),rp=ELEM[EL[k]].r*rf*s;
+   if(Math.abs(sx-W/2)>lim+rp||Math.abs(sy-H/2)>lim+rp){SA[k]=0;continue}SX[k]=sx;SY[k]=sy;SD[k]=o[2]-T3[2]+(kBS>.01&&PR[k]===0?1000:0);SA[k]=pa;ORD.push(k)}
+  ORD.sort((p,q)=>SD[p]-SD[q]);
+  const drawBonds=(focus)=>{if(kBS<.01)return;ctx.lineCap='round';ctx.lineWidth=.22*s;for(let b=0;b<BONDS.length;b+=2){const p=BONDS[b],q=BONDS[b+1];if((PR[p]===0&&PR[q]===0)!==focus||!SA[p]||!SA[q])continue;
+   ctx.globalAlpha=a*kBS*Math.min(SA[p],SA[q])*(focus?1:.5);const mx=(SX[p]+SX[q])/2,my=(SY[p]+SY[q])/2;ctx.strokeStyle=rgba(ELEM[EL[p]].c,1);ctx.beginPath();ctx.moveTo(SX[p],SY[p]);ctx.lineTo(mx,my);ctx.stroke();ctx.strokeStyle=rgba(ELEM[EL[q]].c,1);ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(SX[q],SY[q]);ctx.stroke()}};
+  resetCtx();drawBonds(false);let fb=false;
+  for(const k of ORD){if(!fb&&SD[k]>500){drawBonds(true);fb=true}const rp=ELEM[EL[k]].r*rf*s,sh=clamp(.62+(SD[k]>500?SD[k]-1000:SD[k])/16,0,1);ctx.globalAlpha=a*SA[k];ctx.drawImage(ESPR[EL[k]][Math.round(sh*5)],SX[k]-rp,SY[k]-rp,2*rp,2*rp)}
+  if(!fb)drawBonds(true);
+  if(kBS>.01&&z<9.05){ctx.globalAlpha=a*kBS*(1-sstep(8.85,9.05,z));ctx.setLineDash([.18*s,.14*s]);ctx.strokeStyle='rgba(140,225,255,0.95)';ctx.lineWidth=Math.max(1.5,.07*s);for(const[p,q]of HB){ctx.beginPath();ctx.moveTo(SX[p],SY[p]);ctx.lineTo(SX[q],SY[q]);ctx.stroke()}ctx.setLineDash([])}
+  if(stop===3){let best=null,bd=-1e9;for(let i=-9;i<=-3;i++){const k=idx(i,'s1:P');if(k>=0&&SA[k]&&SD[k]>bd){bd=SD[k];best=k}}if(best!==null)lab([SX[best],SY[best]],'Sugar–phosphate backbone',-40,-70);
+   const g=[];for(let i=4;i<=13;i++){const ph=i*TW*DEG;for(const[m,nm]of[[0,'Minor groove · 1.2 nm'],[Math.PI,'Major groove · 2.2 nm']]){proj(11*Math.cos(ph+m),11*Math.sin(ph+m),i*RISE,o);g.push({d:o[2],p:scr(11*Math.cos(ph+m),11*Math.sin(ph+m),i*RISE),nm})}}
+   for(const nm of['Minor groove · 1.2 nm','Major groove · 2.2 nm']){const c2=g.filter(q=>q.nm===nm).sort((p,q)=>q.d-p.d)[0];if(c2)lab(c2.p,nm,nm[1]==='i'?40:50,nm[1]==='i'?60:-60)}
+   const kk=idx(-5,'R:C5');if(kk>=0&&SA[kk])lab([SX[kk],SY[kk]],'Base pairs, 3.4 Å apart',-60,60)}
+  if(stop===4){const ring=(pre)=>{let x=0,y=0,n=0;for(const nm of['N1','C2','N3','C4','C5','C6']){const k=idx(0,pre+nm);x+=SX[k];y+=SY[k];n++}return[x/n,y/n]};
+   lab(ring('L:'),'Guanine',-60,-80);lab(ring('R:'),'Cytosine',60,-80);const h=HB[1];lab([(SX[h[0]]+SX[h[1]])/2,(SY[h[0]]+SY[h[1]])/2],'Hydrogen bonds · ~2.9 Å',40,90);
+   const k1=idx(0,"s1:C4'");if(k1>=0)lab([SX[k1],SY[k1]],'Deoxyribose sugar',50,50);const k2=idx(0,'s2:P');if(k2>=0)lab([SX[k2],SY[k2]],'Phosphate',-50,60);
+   lab([SX[FOC],SY[FOC]],'Carbon C8',-40,-60)}
+ };
+})();
+
+/* ================= SCENE 5: a carbon atom's electron cloud (units: Å) ================= */
+const Atom={env:[9.05,9.3,12.9,13.4]};
+(()=>{
+ const a0=.529,T=Dna.tpl,c8=T['L:C8'],nb=['L:N7','L:N9','L:H8'].map(k=>({x:T[k].x-c8.x,y:T[k].y-c8.y,el:T[k].el}));
+ const dirs=nb.map(n=>{const l=Math.hypot(n.x,n.y);return{x:n.x/l,y:n.y/l}});
+ const gam=k=>{let s=0;for(let i=0;i<k;i++)s-=Math.log(1-Math.random());return s};
+ const sph=(r,out,i,cx,cy)=>{const u=Math.random()*2-1,p=Math.random()*TAU,q=Math.sqrt(1-u*u);out[i*3]=cx+r*q*Math.cos(p);out[i*3+1]=cy+r*q*Math.sin(p);out[i*3+2]=r*u};
+ const POOLS=[];
+ function radial(n,fn,col,alpha,cx,cy){const o=new Float32Array(n*3);for(let i=0;i<n;i++)sph(fn(),o,i,cx||0,cy||0);POOLS.push({o,n,col,alpha})}
+ function reject(n,box,max,psi2,col,alpha,thr){const o=new Float32Array(n*3);let c=0;while(c<n){const x=(Math.random()*2-1)*box,y=(Math.random()*2-1)*box,z=(Math.random()*2-1)*box;const v=psi2(x,y,z);if(v>thr&&Math.random()*max<v){o[c*3]=x;o[c*3+1]=y;o[c*3+2]=z;c++}}POOLS.push({o,n,col,alpha})}
+ /* 1s² core: hydrogenic, Z_eff≈5.67 */
+ radial(6000,()=>a0*gam(3)/(2*5.67),[255,225,160],.7);
+ /* three sp² hybrids (Z_eff≈3.25): ψ = (1/√3)ψ2s + √(2/3)ψ2p along each bond */
+ const Zv=3.25;
+ dirs.forEach(d=>reject(9000,1.9,1.4,(x,y,z)=>{const r=Math.hypot(x,y,z)||1e-6,rho=Zv*r/a0,cth=(x*d.x+y*d.y)/r,p=(.57735*(2-rho)+.8165*rho*cth)*Math.exp(-rho/2);return p*p},[80,210,255],.62,.05));
+ /* 2p_z: perpendicular to the ring — part of guanine's delocalised π system */
+ reject(9000,1.9,.56,(x,y,z)=>{const r=Math.hypot(x,y,z)||1e-6,rho=Zv*r/a0,p=rho*(z/r)*Math.exp(-rho/2);return p*p},[185,120,255],.7,.035);
+ /* neighbouring atoms (dimmer) */
+ nb.forEach(n=>n.el==='H'?radial(3000,()=>a0*gam(3)/2.4,[230,235,255],.35,n.x,n.y):radial(5000,()=>a0*gam(5)/3.9,[90,120,255],.35,n.x,n.y));
+ const G1=glowSpr([255,230,170],64,.15),GN=glowSpr([110,140,255],64,.2);
+ Atom.draw=(z,a,t,dt,roll,stop)=>{
+  const s=D/Math.pow(10,10-z),al=Dna.theta+Math.PI/2,kT=sstep(9.33,9.46,z),g1=.85*kT,g2=.45*Math.sin(.21*t)*kT;
+  const ca=Math.cos(al),sa=Math.sin(al),c1=Math.cos(g1),s1=Math.sin(g1),c2=Math.cos(g2),s2=Math.sin(g2),cr=Math.cos(roll),sr=Math.sin(roll);
+  const P=(x,y,zz)=>{const xr=x*ca-y*sa,yr=x*sa+y*ca,up=yr*c1-zz*s1,tw=yr*s1+zz*c1,rt=xr*c2+tw*s2,dy=-up;return[W/2+s*(cr*rt-sr*dy),H/2+s*(sr*rt+cr*dy)]};
+  resetCtx();ctx.globalCompositeOperation='lighter';
+  const haze=sstep(10.4,11.4,z);if(haze>0){ctx.globalAlpha=a*haze*.06;ctx.fillStyle='rgb(80,110,255)';ctx.fillRect(0,0,W,H)}
+  ctx.globalAlpha=a;let d=Math.max(20,.5*s);ctx.drawImage(G1,W/2-d/2,H/2-d/2,d,d);
+  for(const n of nb){const p=P(n.x,n.y,0);d=Math.max(12,1.1*s);ctx.globalAlpha=a*.5;ctx.drawImage(GN,p[0]-d/2,p[1]-d/2,d,d)}
+  const ps=Math.max(1.2,Math.min(2.2,W/900));
+  for(const pl of POOLS){const n=Math.min(pl.n,4200),st=(Math.random()*pl.n)|0,o=pl.o;ctx.fillStyle=rgba(pl.col,1);ctx.globalAlpha=a*pl.alpha;
+   for(let j=0;j<n;j++){const i=(st+j)%pl.n,x=o[i*3],y=o[i*3+1],zz=o[i*3+2];const xr=x*ca-y*sa,yr=x*sa+y*ca,up=yr*c1-zz*s1,tw=yr*s1+zz*c1,rt=xr*c2+tw*s2,dy=-up,sx=W/2+s*(cr*rt-sr*dy),sy=H/2+s*(sr*rt+cr*dy);
+    if(sx<0||sy<0||sx>W||sy>H)continue;ctx.fillRect(sx,sy,ps,ps)}}
+  if(stop===5){lab(P(0,0,0),'1s² core electrons',-70,-60);const d0=dirs[0];lab(P(d0.x*.62,d0.y*.62,0),'sp² bonding orbital',60,-60);lab(P(0,0,.6),'2p orbital → shared π cloud',80,-40);
+   lab(P(nb[0].x,nb[0].y,0),'Nitrogen',50,40);lab(P(nb[2].x,nb[2].y,0),'Hydrogen',-50,50)}
+ };
+})();
+
+/* ================= SCENE 6: carbon-12 nucleus (units: fm) ================= */
+const Nuc={env:[11.8,12.5,14.1,14.4]};
+(()=>{
+ const rnd=mulberry32(99),NUC=[],tet=[[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]];
+ for(let k=0;k<3;k++){const ang=-Math.PI/2+k*TAU/3,cx=1.85*Math.cos(ang),cy=1.85*Math.sin(ang),r1=rnd()*TAU,r2=rnd()*TAU;
+  tet.forEach((v,j)=>{let x=v[0]*.66,y=v[1]*.66,z=v[2]*.66;let t1=x*Math.cos(r1)-y*Math.sin(r1);y=x*Math.sin(r1)+y*Math.cos(r1);x=t1;t1=y*Math.cos(r2)-z*Math.sin(r2);z=y*Math.sin(r2)+z*Math.cos(r2);y=t1;NUC.push({x:cx+x,y:cy+y,z,p:j<2,ph:rnd()*50})})}
+ const FOCUS=0;
+ const SP={p:ballSpr([255,95,70],1,256),n:ballSpr([120,165,255],1,256)},GL={p:glowSpr([255,110,80],96),n:glowSpr([120,170,255],96)},GA=glowSpr([255,200,170],128,.1);
+ const QG=[glowSpr([255,80,80],32),glowSpr([80,255,120],32),glowSpr([90,150,255],32)];
+ let pions=[],nextP=0,lastT=0;const PP=[];
+ function pos(i,t,o){const n=NUC[i],a=.21*t,b=.5+.13*t;let x=n.x+.2*noise3(n.ph,t*.9,0),y=n.y+.2*noise3(n.ph,t*.9,3),z=n.z+.2*noise3(n.ph,t*.9,6);
+  let t1=x*Math.cos(a)+z*Math.sin(a);z=-x*Math.sin(a)+z*Math.cos(a);x=t1;t1=y*Math.cos(b)-z*Math.sin(b);z=y*Math.sin(b)+z*Math.cos(b);y=t1;o[0]=x;o[1]=y;o[2]=z}
+ Nuc.draw=(z,a,t,dt,roll,stop)=>{
+  if(t<lastT){pions=[];nextP=t}lastT=t;
+  const s=D/Math.pow(10,15-z),kPan=easeIO(sstep(13.8,14.3,z)),oa=1-sstep(14.05,14.35,z);
+  for(let i=0;i<12;i++){PP[i]=PP[i]||[0,0,0];pos(i,t,PP[i])}
+  const T=[PP[FOCUS][0]*kPan,PP[FOCUS][1]*kPan],SC=PP.map(p=>toScr(p[0]-T[0],-(p[1]-T[1]),s,roll)),rp=.84*s;
+  resetCtx();ctx.globalCompositeOperation='lighter';
+  ctx.globalAlpha=a*.035;ctx.fillStyle='rgb(70,100,255)';ctx.fillRect(0,0,W,H);
+  const c0=toScr(-T[0],T[1],s,roll),ga=1-sstep(1.5,6,rp);if(ga>0){const d=Math.max(26,9*s);ctx.globalAlpha=a*ga;ctx.drawImage(GA,c0[0]-d/2,c0[1]-d/2,d,d)}
+  if(rp<.8)return;
+  while(nextP<t){nextP+=.12+Math.random()*.1;const i=Math.random()*12|0;let j=Math.random()*12|0;if(i!==j)pions.push({i,j,t0:nextP,life:.35+Math.random()*.35})}
+  pions=pions.filter(p=>t-p.t0<p.life);
+  const ord=[...Array(12).keys()].sort((p,q)=>PP[p][2]-PP[q][2]);if(kPan>.5){ord.splice(ord.indexOf(FOCUS),1);ord.push(FOCUS)}
+  ctx.globalCompositeOperation='source-over';
+  for(const i of ord){const n=NUC[i],al=a*(i===FOCUS?1:oa);if(al<.01)continue;const sc=SC[i],sh=.75+.25*clamp(PP[i][2]/3,-1,1);
+   ctx.globalAlpha=al;ctx.globalCompositeOperation='lighter';const g=rp*3.2;ctx.globalAlpha=al*.35;ctx.drawImage(n.p?GL.p:GL.n,sc[0]-g/2,sc[1]-g/2,g,g);
+   ctx.globalCompositeOperation='source-over';ctx.globalAlpha=al*sh;ctx.drawImage(n.p?SP.p:SP.n,sc[0]-rp,sc[1]-rp,2*rp,2*rp);
+   if(rp>40){ctx.globalCompositeOperation='lighter';ctx.globalAlpha=al*sstep(40,140,rp)*.8;for(let q=0;q<3;q++){const an=t*1.3+q*TAU/3+n.ph,qr=.32*rp,d=Math.max(8,.25*rp);ctx.drawImage(QG[q],sc[0]+Math.cos(an)*qr-d/2,sc[1]+Math.sin(an*1.1)*qr-d/2,d,d)}ctx.globalCompositeOperation='source-over'}}
+  if(rp>3){ctx.globalCompositeOperation='lighter';ctx.lineCap='round';for(const p of pions){const u=(t-p.t0)/p.life,A=SC[p.i],B=SC[p.j],mx=(A[0]+B[0])/2-(B[1]-A[1])*.3,my=(A[1]+B[1])/2+(B[0]-A[0])*.3;
+   ctx.globalAlpha=a*oa*Math.sin(Math.PI*u)*.55;ctx.strokeStyle='rgba(150,255,200,0.8)';ctx.lineWidth=Math.max(1,.03*s);ctx.beginPath();ctx.moveTo(A[0],A[1]);ctx.quadraticCurveTo(mx,my,B[0],B[1]);ctx.stroke()}}
+  if(stop===6){const pr=ord.filter(i=>NUC[i].p&&i!==FOCUS).pop(),ne=ord.filter(i=>!NUC[i].p).pop();if(pr!==undefined)lab(SC[pr],'Proton',-60,-60);if(ne!==undefined)lab(SC[ne],'Neutron',60,60);
+   const pi=pions[pions.length-1];if(pi){const A=SC[pi.i],B=SC[pi.j];lab([(A[0]+B[0])/2,(A[1]+B[1])/2],'virtual pion exchange',80,-70)}}
+ };
+})();
+
+/* ================= SCENE 7: inside a proton (units: fm) ================= */
+const Pro={env:[14.1,14.4,15.45,15.95]};
+(()=>{
+ const COLS=[[255,60,60],[60,255,110],[80,140,255]];
+ const Q=[{f:'u',c:0,cc:[...COLS[0]]},{f:'u',c:1,cc:[...COLS[1]]},{f:'d',c:2,cc:[...COLS[2]]}];
+ const QG=COLS.map(c=>glowSpr(c,64,.15)),WG=glowSpr([255,240,230],64,.1);
+ let gl=[],sea=[],loops=[],nextG=0,nextS=0,lastT=0,qc=null,qx=null;
+ const qpos=(k,t)=>{const b=k*TAU/3+.4;let x=.28*Math.cos(b)+.42*noise3(k*7.3,t*.32,.5),y=.28*Math.sin(b)+.42*noise3(k*7.3+3,t*.32,4.5);const r=Math.hypot(x,y);if(r>.55){x*=.55/r;y*=.55/r}return[x,y]};
+ function distSeg(px,py,ax,ay,bx,by){const dx=bx-ax,dy=by-ay,u=clamp(((px-ax)*dx+(py-ay)*dy)/(dx*dx+dy*dy||1),0,1);return Math.hypot(px-ax-u*dx,py-ay-u*dy)}
+ Pro.draw=(z,a,t,dt,roll,stop)=>{
+  if(t<lastT){gl=[];sea=[];loops=[];nextG=t;nextS=t}lastT=t;
+  const s=D/Math.pow(10,15-z),T=mkT(s,0,0,roll),px=1/s,qp=[0,1,2].map(k=>qpos(k,t)),J=[(qp[0][0]+qp[1][0]+qp[2][0])/3,(qp[0][1]+qp[1][1]+qp[2][1])/3];
+  for(const q of Q){const tc=COLS[q.c];for(let i=0;i<3;i++)q.cc[i]+=(tc[i]-q.cc[i])*Math.min(1,dt*5)}
+  /* QCD vacuum: lumpy gluon-field action density (~0.3 fm lumps), suppressed inside the flux tube */
+  const QW=Math.max(64,Math.round(Math.min(160,W/9))),QH=Math.max(36,Math.round(QW*H/W));
+  if(!qc||qc.width!==QW||qc.height!==QH){qc=mk(QW,QH);qx=qc.getContext('2d')}
+  const id=qx.createImageData(QW,QH),dd=id.data;
+  for(let j=0;j<QH;j++)for(let i=0;i<QW;i++){const w=T.inv((i+.5)/QW*W,(j+.5)/QH*H),v=.75*noise3(w[0]*3.2,w[1]*3.2,t*.25)+.35*noise3(w[0]*6.5,w[1]*6.5,t*.45+7);
+   let m=Math.pow(clamp(v*2.2,0,1),1.5);const dm=Math.min(distSeg(w[0],w[1],qp[0][0],qp[0][1],J[0],J[1]),distSeg(w[0],w[1],qp[1][0],qp[1][1],J[0],J[1]),distSeg(w[0],w[1],qp[2][0],qp[2][1],J[0],J[1]));
+   m*=(1-.6*Math.exp(-dm*dm/.012))*(.5+.5*Math.exp(-(w[0]*w[0]+w[1]*w[1])/1.1));const k=(j*QW+i)*4;
+   dd[k]=clamp(40+m*400,0,255);dd[k+1]=clamp(8+m*m*260,0,255);dd[k+2]=clamp(70+m*170-m*m*120,0,255);dd[k+3]=255}
+  qx.putImageData(id,0,0);resetCtx();ctx.globalCompositeOperation='lighter';ctx.globalAlpha=a*.55;ctx.imageSmoothingEnabled=true;ctx.drawImage(qc,0,0,W,H);
+  T.set();ctx.globalAlpha=a;
+  const g=ctx.createRadialGradient(0,0,0,0,0,1.3);g.addColorStop(0,'rgba(255,140,110,0.22)');g.addColorStop(.6,'rgba(255,90,90,0.08)');g.addColorStop(1,'rgba(255,60,80,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(0,0,1.3,0,TAU);ctx.fill();
+  ctx.setLineDash([.04,.05]);ctx.strokeStyle='rgba(255,200,190,0.25)';ctx.lineWidth=Math.max(.006,1*px);ctx.beginPath();ctx.arc(0,0,.84,0,TAU);ctx.stroke();ctx.setLineDash([]);
+  /* sea of virtual quark–antiquark pairs */
+  while(nextS<t){nextS+=1/45;const r=Math.random()<.8?1.05*Math.sqrt(Math.random()):1.1+.8*Math.random(),an=Math.random()*TAU;sea.push({x:r*Math.cos(an),y:r*Math.sin(an),o:Math.random()*TAU,t0:nextS,life:.35+Math.random()*.55,c:Math.random()*3|0});
+   if(Math.random()<.25)loops.push({x:(Math.random()*2-1)*1.1,y:(Math.random()*2-1)*1.1,t0:nextS,life:.6,r:.05+Math.random()*.05})}
+  sea=sea.filter(p=>t-p.t0<p.life);loops=loops.filter(p=>t-p.t0<p.life);
+  const dr=Math.max(.011,1.6*px);
+  for(const p of sea){const u=(t-p.t0)/p.life,al=Math.sin(Math.PI*u),sp=.09*Math.sin(Math.PI*u),ex=Math.cos(p.o)*sp/2,ey=Math.sin(p.o)*sp/2,col=COLS[p.c],anti=[255-col[0],255-col[1],255-col[2]];
+   ctx.globalAlpha=a*al*.9;ctx.fillStyle=rgba(col,1);ctx.beginPath();ctx.arc(p.x+ex,p.y+ey,dr,0,TAU);ctx.fill();ctx.fillStyle=rgba(anti,1);ctx.beginPath();ctx.arc(p.x-ex,p.y-ey,dr,0,TAU);ctx.fill();
+   ctx.strokeStyle='rgba(255,255,255,0.35)';ctx.lineWidth=Math.max(.004,.7*px);ctx.beginPath();ctx.moveTo(p.x+ex,p.y+ey);ctx.lineTo(p.x-ex,p.y-ey);ctx.stroke()}
+  ctx.lineWidth=Math.max(.006,1*px);
+  for(const l of loops){const u=(t-l.t0)/l.life;ctx.globalAlpha=a*Math.sin(Math.PI*u)*.35;ctx.strokeStyle='rgba(255,220,140,0.9)';ctx.beginPath();for(let k=0;k<=80;k++){const an=k/80*TAU,rr=l.r*(1+.1*Math.sin(an*14+t*8));k?ctx.lineTo(l.x+rr*Math.cos(an),l.y+rr*Math.sin(an)):ctx.moveTo(l.x+rr,l.y)}ctx.stroke()}
+  /* colour flux tubes (Y-shaped string) */
+  ctx.lineCap='round';
+  for(let k=0;k<3;k++){const q=Q[k],fl=1+.25*noise3(k,t*3,1);ctx.strokeStyle=rgba(q.cc,1);ctx.globalAlpha=a*.12;ctx.lineWidth=.13*fl;ctx.beginPath();ctx.moveTo(qp[k][0],qp[k][1]);ctx.lineTo(J[0],J[1]);ctx.stroke();
+   ctx.globalAlpha=a*.25;ctx.lineWidth=.045*fl;ctx.stroke();ctx.globalAlpha=a*.7;ctx.strokeStyle=rgba(mixc(q.cc,WHITE,.5),1);ctx.lineWidth=Math.max(.02,1.5*px);ctx.stroke()}
+  /* gluon exchanges: colour hops between quarks */
+  while(nextG<t){nextG+=.55+Math.random()*.6;const i=Math.random()*3|0,j=(i+1+(Math.random()*2|0))%3;gl.push({i,j,t0:nextG,dur:.5,done:false})}
+  for(const e of gl){const u=(t-e.t0)/e.dur;if(u>=1&&!e.done){e.done=true;const c=Q[e.i].c;Q[e.i].c=Q[e.j].c;Q[e.j].c=c}if(u<0||u>=1.3)continue;
+   const A=qp[e.i],B=qp[e.j],L=Math.hypot(B[0]-A[0],B[1]-A[1])||1e-3,ux=(B[0]-A[0])/L,uy=(B[1]-A[1])/L,hd=easeIO(clamp(u,0,1)),tl=clamp(u-.3,0,1);
+   const gr=ctx.createLinearGradient(A[0],A[1],B[0],B[1]);gr.addColorStop(0,rgba(COLS[Q[e.i].c],1));gr.addColorStop(1,rgba(COLS[Q[e.j].c],1));
+   ctx.strokeStyle=gr;ctx.globalAlpha=a*(1-sstep(1,1.3,u));ctx.lineWidth=Math.max(.012,1.6*px);ctx.beginPath();
+   for(let v=tl;v<=hd;v+=.004){const ph=v*L/.03,x=A[0]+ux*v*L-uy*.04*Math.sin(ph)+ux*.025*Math.cos(ph),y=A[1]+uy*v*L+ux*.04*Math.sin(ph)+uy*.025*Math.cos(ph);v===tl?ctx.moveTo(x,y):ctx.lineTo(x,y)}ctx.stroke()}
+  gl=gl.filter(e=>t-e.t0<e.dur*1.3);
+  /* valence quarks (point-like: < 10⁻¹⁸ m) */
+  resetCtx();ctx.globalCompositeOperation='lighter';
+  const qs=qp.map(p=>T.pt(p[0],p[1]));
+  for(let k=0;k<3;k++){const p=qs[k],d=Math.max(34,.45*s);ctx.globalAlpha=a;ctx.drawImage(QG[Q[k].c],p[0]-d/2,p[1]-d/2,d,d);ctx.drawImage(WG,p[0]-7,p[1]-7,14,14)}
+  ctx.globalCompositeOperation='source-over';ctx.font='italic 300 17px Georgia,serif';ctx.fillStyle='rgba(255,255,255,0.92)';ctx.textAlign='left';ctx.textBaseline='middle';
+  for(let k=0;k<3;k++){ctx.globalAlpha=a;ctx.fillText(Q[k].f,qs[k][0]+12,qs[k][1]-14)}
+  if(stop===7){lab(qs[0],'up quark · charge +⅔ e',-80,-70);lab(qs[2],'down quark · charge −⅓ e',80,70);
+   lab(T.pt((qp[1][0]+J[0])/2,(qp[1][1]+J[1])/2),'gluon flux tube',90,-60);lab(T.pt(.84*Math.cos(2.4),.84*Math.sin(2.4)),'charge radius 0.84 fm',-60,60);
+   const sp=sea.find(p=>Math.hypot(p.x,p.y)>.6&&Math.hypot(p.x,p.y)<1.1);if(sp)lab(T.pt(sp.x,sp.y),'virtual quark–antiquark pair',80,-50)}
+ };
+})();
+
+/* ================= SCENE 8: quantum fields ================= */
+const Fld={env:[15.5,16.0,99,100]};
+(()=>{
+ const NX=64,NZ=44,X0=-7,X1=7,Z0=-5,Z1=5;
+ const LAY=[{name:'Gluon field',sub:'strong force',col:[255,95,210],y:3.2,amp:.28,seed:11},{name:'Quark fields',sub:'up · down · …',col:[255,140,70],y:1.6,amp:.12,seed:23},
+  {name:'Electromagnetic field',sub:'photons',col:[235,240,255],y:0,amp:.1,seed:37},{name:'Electron field',sub:'electrons',col:[80,215,255],y:-1.6,amp:.1,seed:41},
+  {name:'Higgs field',sub:'nonzero even in vacuum',col:[255,200,90],y:-3.2,amp:.06,seed:53,vev:.35}];
+ const h=new Float32Array(NX*NZ),SXa=new Float32Array(NX*NZ),SYa=new Float32Array(NX*NZ),SZa=new Float32Array(NX*NZ);
+ const e1=t=>[-8+((t*1.1)%16),-1.2],e2=t=>[8-((t*.8+5)%16),1.8],PROT=[2.5,-1.5];
+ const glows=LAY.map(L=>glowSpr(L.col,64,.2));
+ function height(li,x,zz,t){const L=LAY[li];let v=L.amp*(noise3(x*.8+L.seed,zz*.8,t*.45)+.5*noise3(x*1.9,zz*1.9+L.seed,t*.9))+(L.vev||0);
+  if(li===3){for(const[p,dir]of[[e1(t),1],[e2(t),-1]]){const dx=x-p[0],dz=zz-p[1],d2=dx*dx+dz*dz;if(d2<9)v+=.55*Math.exp(-d2/.9)*Math.cos(4.5*dx*dir-7*t)}}
+  if(li===2){for(let k=0;k<3;k++){const te=Math.floor(t/3)*3-k*3;if(te<0)continue;const p=e1(te),tau=t-te,r=Math.hypot(x-p[0],zz-p[1]),w=r-1.6*tau;if(Math.abs(w)<1.5)v+=.45*Math.exp(-w*w/.25)*Math.cos(7*w)/(1+.8*r)*Math.exp(-tau*.25)}}
+  if(li===1){for(let k=0;k<3;k++){const cx=PROT[0]+.5*Math.cos(1.3*t+k*2.09),cz=PROT[1]+.5*Math.sin(1.3*t+k*2.09),d2=(x-cx)**2+(zz-cz)**2;if(d2<2)v+=.35*Math.exp(-d2/.12)*Math.cos(9*Math.sqrt(d2)-8*t)}}
+  if(li===0){const d2=(x-PROT[0])**2+(zz-PROT[1])**2;if(d2<9)v+=.35*Math.exp(-d2/1.0)*(.7+.5*noise3(x*3,zz*3,t))}
+  return v}
+ Fld.draw=(z,a,t,dt,roll,stop)=>{
+  const r=easeIO(sstep(15.75,16.5,z)),pitch=lerp(88,21,r)*DEG,dist=lerp(2.6,15.5,r),yaw=.45+.035*t,ty=lerp(3.2,0,r),focal=D*.62;
+  const E=[dist*Math.cos(pitch)*Math.sin(yaw),ty+dist*Math.sin(pitch),dist*Math.cos(pitch)*Math.cos(yaw)];
+  let F=[-E[0],ty-E[1],-E[2]];const fl=Math.hypot(...F);F=F.map(v=>v/fl);let R=[-F[2],0,F[0]];const rl=Math.hypot(...R);R=R.map(v=>v/rl);const U=[R[1]*F[2]-R[2]*F[1],R[2]*F[0]-R[0]*F[2],R[0]*F[1]-R[1]*F[0]];
+  const cr=Math.cos(roll),sr=Math.sin(roll);
+  const proj=(x,y,zz)=>{const vx=x-E[0],vy=y-E[1],vz=zz-E[2],cz=vx*F[0]+vy*F[1]+vz*F[2];if(cz<.15)return null;const px=(vx*R[0]+vy*R[1]+vz*R[2])*focal/cz,py=-(vx*U[0]+vy*U[1]+vz*U[2])*focal/cz;return[W/2+cr*px-sr*py,H/2+sr*px+cr*py,cz]};
+  resetCtx();ctx.globalCompositeOperation='lighter';ctx.lineCap='round';
+  for(let li=LAY.length-1;li>=0;li--){const L=LAY[li],la=a*(li===0?1:lerp(.2,1,r));
+   for(let j=0;j<NZ;j++)for(let i=0;i<NX;i++){const x=X0+(X1-X0)*i/(NX-1),zz=Z0+(Z1-Z0)*j/(NZ-1),k=j*NX+i,hv=height(li,x,zz,t);h[k]=hv-(L.vev||0);const p=proj(x,L.y+hv,zz);if(p){SXa[k]=p[0];SYa[k]=p[1];SZa[k]=p[2]}else SZa[k]=-1}
+   const B=[new Path2D(),new Path2D(),new Path2D(),new Path2D()];
+   const seg=(p,q)=>{if(SZa[p]<0||SZa[q]<0)return;const I=(.35+3*Math.abs(h[p]+h[q])/2)*clamp(1.5-(SZa[p])/(dist*1.6),.15,1),b=Math.min(3,I*2.2|0);B[b].moveTo(SXa[p],SYa[p]);B[b].lineTo(SXa[q],SYa[q])};
+   for(let j=0;j<NZ;j++)for(let i=0;i<NX-1;i++)seg(j*NX+i,j*NX+i+1);for(let i=0;i<NX;i++)for(let j=0;j<NZ-1;j++)seg(j*NX+i,(j+1)*NX+i);
+   const AL=[.1,.22,.42,.75];for(let b=0;b<4;b++){ctx.strokeStyle=rgba(L.col,AL[b]*la);ctx.lineWidth=b===3?1.5:1;ctx.stroke(B[b])}
+   const glow=(x,zz,sz)=>{const p=proj(x,L.y+.2,zz);if(!p)return;const d=sz*focal/p[2];ctx.globalAlpha=la;ctx.drawImage(glows[li],p[0]-d/2,p[1]-d/2,d,d);ctx.globalAlpha=1};
+   if(li===3){glow(...e1(t),1.2);glow(...e2(t),1.2)}if(li===1)for(let k=0;k<3;k++)glow(PROT[0]+.5*Math.cos(1.3*t+k*2.09),PROT[1]+.5*Math.sin(1.3*t+k*2.09),.7);
+   if(L.vev&&r>.4){ctx.setLineDash([4,6]);ctx.strokeStyle=rgba(L.col,.25*la*r);ctx.beginPath();const cs=[[X0,Z0],[X1,Z0],[X1,Z1],[X0,Z1],[X0,Z0]].map(c=>proj(c[0],L.y,c[1]));if(cs.every(Boolean)){cs.forEach((p,k)=>k?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));ctx.stroke()}ctx.setLineDash([])}
+   if(r>.3){const pa=proj(X0,L.y,0),pb=proj(X1,L.y,0);if(pa&&pb){const left=pa[0]<pb[0]?pa:pb,right=pa[0]<pb[0]?pb:pa;ctx.globalCompositeOperation='source-over';ctx.globalAlpha=a*sstep(.3,.8,r);
+    const onLeft=left[0]>190,px=onLeft?left[0]-16:right[0]+16,py=onLeft?left[1]:right[1];ctx.textAlign=onLeft?'right':'left';ctx.textBaseline='middle';
+    ctx.font='300 15px "Segoe UI",system-ui,sans-serif';ctx.fillStyle=rgba(mixc(L.col,WHITE,.3),1);ctx.fillText(L.name,px,py-8);ctx.font='300 11px "Segoe UI",system-ui,sans-serif';ctx.fillStyle='rgba(210,225,255,0.55)';ctx.fillText(L.sub,px,py+9);
+    ctx.globalAlpha=1;ctx.globalCompositeOperation='lighter'}}}
+ };
+})();
+
+/* ================= HUD, captions, main loop ================= */
+const SCENES=[Cell,Mol,Dna,Atom,Nuc,Pro,Fld];
+const CPK='<span><i style="background:#969ea8"></i>carbon</span><span><i style="background:#466eff"></i>nitrogen</span><span><i style="background:#ff3737"></i>oxygen</span><span><i style="background:#ff961e"></i>phosphorus</span><span><i style="background:#eef2f8"></i>hydrogen</span>';
+const CAPS={
+ 0:{k:'01 · 10⁻⁶ m · micrometres',h:'<i>Escherichia coli</i>',p:'A single bacterium, about 2 µm long. A bundle of helical flagella, each turned by a rotary motor at ~100 revolutions per second, drives it through water. Hundreds of fimbriae let it cling to surfaces.'},
+ 1:{k:'02 · 10⁻⁷ m',h:'Inside the cytoplasm',p:'Packed with ~300 g of protein per litre. Thousands of ribosomes (magenta) build proteins, while the nucleoid (blue) folds a 1.5 mm circular chromosome of 4.6 million base pairs into supercoiled loops smaller than a micrometre.'},
+ 2:{k:'03 · 10⁻⁸ m · tens of nanometres',h:'Transcription meets translation',p:'RNA polymerase (violet) copies DNA into messenger RNA. Bacteria have no nucleus, so ribosomes grab the mRNA while it is still being made. The leading ribosome, nearest the polymerase, has been working longest and carries the longest new protein.'},
+ 3:{k:'04 · 10⁻⁹ m · nanometres',h:'The double helix',p:'B‑DNA is 2 nm wide, a right‑handed helix that turns once every ~10.5 base pairs (3.4 nm). Two sugar‑phosphate backbones wind around a stack of base pairs, leaving a wide major groove and a narrow minor groove where proteins read the sequence.',lg:CPK},
+ 4:{k:'05 · 10⁻¹⁰ m · ångströms',h:'One base pair: G≡C',p:'Looking straight down the helix axis. Guanine and cytosine hold each other with three hydrogen bonds. A·T and G·C pairs are almost exactly the same width, so any sequence fits the same helix. Each pair sits 3.4 Å above the last, twisted ~34°.',lg:CPK},
+ 5:{k:'06 · 10⁻¹⁰ m',h:'A carbon atom',p:'Electrons do not orbit like planets. They are standing waves of probability: a tight 1s² core, three sp² hybrid lobes forming bonds to N7, N9 and H, and a 2p orbital (violet) that joins the ring’s shared π cloud. Each dot marks one place an electron could be found.'},
+ void:{k:'10⁻¹¹ → 10⁻¹⁴ m',h:'Almost nothing',p:'An atom is almost entirely empty. The nucleus is ~30,000 times narrower than the electron cloud, yet it carries 99.97% of the mass. Even here, the 1s electron wave passes straight through it.'},
+ 6:{k:'07 · 10⁻¹⁴ m · femtometres',h:'The carbon‑12 nucleus',p:'Six protons and six neutrons packed within ~2.5 fm, at a density of 2×10¹⁷ kg/m³. The residual strong force, carried by fleeting virtual pions, overcomes the protons’ electric repulsion. Carbon‑12’s nucleons tend to cluster as three alpha particles.'},
+ 7:{k:'08 · 10⁻¹⁵ m',h:'Inside a proton',p:'Two up quarks and a down quark, bound by gluons into a colour‑neutral whole. Quarks keep swapping colour charge through gluons, and a string of gluon field ties them together. Their rest masses give only ~1% of the proton’s mass. The rest is the energy of this seething field.'},
+ 8:{k:'09 · beyond scale',h:'Quantum fields',p:'At the bottom there are no particles, only fields that fill all of space: quark, gluon, electron, electromagnetic, Higgs. A particle is a quantised ripple in its field. Forces are fields trading ripples. Even the vacuum is never still.'}
+};
+const capEl=document.getElementById('cap'),intro=document.getElementById('intro'),finale=document.getElementById('finale');
+let capWant=-1,capShown=-1,capSwap=0;
+function updCap(w){const now=performance.now();if(w!==capWant){capWant=w;capEl.classList.remove('show');capSwap=now+(capShown===-1?60:900)}
+ if(capSwap&&now>=capSwap){capSwap=0;capShown=w;if(w!==-1){const c=CAPS[w];capEl.querySelector('.k').textContent=c.k;capEl.querySelector('h2').innerHTML=c.h;capEl.querySelector('p').textContent=c.p;capEl.querySelector('.lg').innerHTML=c.lg||'';capEl.classList.add('show')}}}
+
+const NAMES=['Cell','Cytoplasm','Machinery','Double helix','Base pair','Atom','Nucleus','Proton','Fields'];
+const SUP='⁰¹²³⁴⁵⁶⁷⁸⁹',sup=n=>'10⁻'+String(n).split('').map(d=>SUP[d]).join('');
+let HITS=[];
+function drawRuler(z){HITS=[];if(W<720||H<420)return;const x=W-48,y0=H*.16,y1=H*.84,Y=v=>lerp(y0,y1,(v-5)/(16.5-5));resetCtx();
+ ctx.strokeStyle='rgba(190,215,255,0.22)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x,y0);ctx.lineTo(x,y1);ctx.stroke();
+ ctx.font='10px "Segoe UI",system-ui,sans-serif';ctx.textBaseline='middle';ctx.textAlign='left';
+ for(let n=5;n<=16;n++){const y=Y(n);ctx.strokeStyle='rgba(190,215,255,0.3)';ctx.beginPath();ctx.moveTo(x-3,y);ctx.lineTo(x+3,y);ctx.stroke();ctx.fillStyle='rgba(190,215,255,0.38)';ctx.fillText(sup(n),x+7,y)}
+ ctx.textAlign='right';ctx.font='11px "Segoe UI",system-ui,sans-serif';
+ STOPS.forEach((s,i)=>{const y=Y(s.z),near=Math.abs(z-s.z)<.35;ctx.fillStyle=near?'rgba(160,220,255,0.95)':'rgba(190,215,255,0.42)';ctx.fillText(NAMES[i],x-12,y);ctx.fillRect(x-4,y-.5,4,1);HITS.push({x0:x-110,x1:x+4,y0:y-9,y1:y+9,i})});
+ const y=Y(clamp(z,5,16.5));ctx.globalCompositeOperation='lighter';const g=ctx.createRadialGradient(x,y,0,x,y,12);g.addColorStop(0,'rgba(150,220,255,0.9)');g.addColorStop(1,'rgba(150,220,255,0)');ctx.fillStyle=g;ctx.fillRect(x-12,y-12,24,24);
+ ctx.fillStyle='#e8f6ff';ctx.beginPath();ctx.arc(x,y,2.6,0,TAU);ctx.fill()}
+function drawScale(z){const fa=1-sstep(15.6,16,z);if(fa<=0)return;const mpp=Math.pow(10,-z)/D,target=110*mpp,e=Math.floor(Math.log10(target)),b=target/Math.pow(10,e),nice=b<1.5?1:b<3.5?2:5,val=nice*Math.pow(10,e),len=val/mpp;
+ const U=[[1e-6,'µm'],[1e-9,'nm'],[1e-12,'pm'],[1e-15,'fm'],[1e-18,'am']];let u=U[U.length-1];for(const q of U)if(val>=q[0]*.999){u=q;break}
+ const num=+(val/u[0]).toPrecision(3),x=Math.max(16,W*.035),y=H-34;resetCtx();ctx.globalAlpha=fa;
+ ctx.strokeStyle='rgba(225,240,255,0.8)';ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(x,y-5);ctx.lineTo(x,y);ctx.lineTo(x+len,y);ctx.lineTo(x+len,y-5);ctx.stroke();
+ ctx.font='12px "Segoe UI",system-ui,sans-serif';ctx.fillStyle='rgba(225,240,255,0.85)';ctx.textAlign='left';ctx.textBaseline='bottom';ctx.fillText(num+' '+u[1],x,y-8);
+ const fov=Math.pow(10,-z);let fu=U[U.length-1];for(const q of U)if(fov>=q[0]){fu=q;break}ctx.fillStyle='rgba(200,220,255,0.4)';ctx.font='10.5px "Segoe UI",system-ui,sans-serif';ctx.textBaseline='top';ctx.fillText('field of view ≈ '+(+(fov/fu[0]).toPrecision(2))+' '+fu[1],x,y+6)}
+function drawLabels(fa){resetCtx();ctx.font='300 12.5px "Segoe UI",system-ui,sans-serif';ctx.textBaseline='middle';
+ for(const L of LABELS){if(fa<.01)break;const ex=clamp(L.x+L.dx,30,W-30),ey=clamp(L.y+L.dy,30,H-30),right=L.dx>=0,d=Math.hypot(ex-L.x,ey-L.y)||1;ctx.globalAlpha=fa;
+  ctx.strokeStyle='rgba(210,235,255,0.7)';ctx.lineWidth=1;ctx.beginPath();ctx.arc(L.x,L.y,4,0,TAU);ctx.stroke();ctx.beginPath();ctx.moveTo(L.x+(ex-L.x)/d*6,L.y+(ey-L.y)/d*6);ctx.lineTo(ex,ey);ctx.lineTo(ex+(right?16:-16),ey);ctx.stroke();
+  ctx.textAlign=right?'left':'right';ctx.fillStyle='rgba(0,0,0,0.55)';ctx.fillText(L.text,ex+(right?23:-23),ey+1);ctx.fillStyle='rgba(238,246,255,0.95)';ctx.fillText(L.text,ex+(right?22:-22),ey)}LABELS.length=0}
+const BGS=[[5,[5,16,28]],[6.5,[5,17,28]],[7.5,[6,12,26]],[8.5,[5,8,22]],[9.8,[3,4,13]],[12,[2,2,6]],[14,[8,3,11]],[15,[11,3,15]],[16.5,[3,3,11]]];
+function background(z){let c=BGS[0][1];for(let i=0;i<BGS.length-1;i++){if(z>=BGS[i][0]&&z<=BGS[i+1][0]){c=mixc(BGS[i][1],BGS[i+1][1],(z-BGS[i][0])/(BGS[i+1][0]-BGS[i][0]));break}if(z>BGS[i+1][0])c=BGS[i+1][1]}
+ resetCtx();const g=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,Math.hypot(W,H)/2);g.addColorStop(0,rgba(scl(c,1.9),1));g.addColorStop(1,rgba(scl(c,.45),1));ctx.fillStyle=g;ctx.fillRect(0,0,W,H)}
+function vignette(){resetCtx();const g=ctx.createRadialGradient(W/2,H/2,Math.min(W,H)*.35,W/2,H/2,Math.hypot(W,H)*.62);g.addColorStop(0,'rgba(0,0,0,0)');g.addColorStop(1,'rgba(0,0,0,0.6)');ctx.fillStyle=g;ctx.fillRect(0,0,W,H)}
+
+let clock=parseFloat(new URLSearchParams(location.search).get("t"))||0,last=performance.now(),paused=new URLSearchParams(location.search).has("p");
+function jump(i){const g=SEGS.find(q=>q.type==='hold'&&q.i===i);if(g){if(g.t0<clock)Dna.spinAcc=0;clock=g.t0+.01}}
+function curStop(){const g=timeline(clock).seg;return g.type==='hold'?g.i:g.i+.5}
+addEventListener('keydown',e=>{if(e.code==='Space'){paused=!paused;e.preventDefault()}else if(e.code==='ArrowRight')jump(Math.min(8,Math.floor(curStop())+1));else if(e.code==='ArrowLeft'){const c=curStop();jump(Math.max(0,Number.isInteger(c)?c-1:Math.floor(c)))}else if(e.key==='r'||e.key==='R')jump(0)});
+cv.addEventListener('click',e=>{for(const h of HITS)if(e.clientX>=h.x0&&e.clientX<=h.x1&&e.clientY>=h.y0&&e.clientY<=h.y1){jump(h.i);return}});
+cv.addEventListener('mousemove',e=>{cv.style.cursor=HITS.some(h=>e.clientX>=h.x0&&e.clientX<=h.x1&&e.clientY>=h.y0&&e.clientY<=h.y1)?'pointer':'default'});
+document.getElementById('replay').addEventListener('click',()=>jump(0));
+
+function frame(now){let dt=Math.min(.05,(now-last)/1000);last=now;if(paused)dt=0;clock+=dt;
+ const st=timeline(clock),z=st.z,g=st.seg,roll=-.3+.0045*clock,stop=g.type==='hold'?g.i:-1;
+ background(z);
+ for(const sc of SCENES){const a=env(sc.env,z);if(a>.003){ctx.save();try{sc.draw(z,a,clock,dt,roll,stop)}catch(err){console.error(err)}ctx.restore();resetCtx()}}
+ vignette();
+ let fa=0;if(stop>=0){const t0=stop===0?7.5:g.t0+1.4;fa=sstep(t0,t0+1.2,clock)*(1-sstep(g.t1-.9,g.t1,clock))}drawLabels(fa);
+ drawScale(z);drawRuler(z);
+ intro.classList.toggle('show',clock>.4&&clock<6.2);
+ let w=-1;if(g.type==='hold'){if(g.i===0)w=clock>6.8?0:-1;else if(g.i===8)w=clock-g.t0>1&&clock-g.t0<12?8:-1;else w=g.i}else if(g.i===5&&st.u>.3&&st.u<.93)w='void';updCap(w);
+ const ft=g.i===8&&g.type==='hold'?clock-g.t0:-1;finale.classList.toggle('s1',ft>13);finale.classList.toggle('s2',ft>19);
+ requestAnimationFrame(frame)}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
